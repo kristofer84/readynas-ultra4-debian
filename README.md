@@ -36,7 +36,7 @@ someone who knows the words. The files below are the evidence and the why.
 | [`scripts/`](scripts/) | the four `/usr/local/sbin` scripts: `sync-boot-to-dom`, `backup-root`, `nas-fancontrol`, `md-event` |
 | [`systemd/`](systemd/) | the local units, including the weekly root snapshot and the md stripe cache bump |
 | [`hooks/`](hooks/) | the kernel and initramfs hooks that keep the boot module in step with `/boot` |
-| [`install/`](install/) | the four scripts the checklist calls: `preflight.sh`, `chroot-configure.sh`, `boot-module.sh`, `postinstall.sh` |
+| [`install/`](install/) | the five scripts the guides call: `preflight.sh` (prove the data, take copies), `format-and-debootstrap.sh` (the only erasing step, guarded), `chroot-configure.sh`, `boot-module.sh`, `postinstall.sh` |
 | [`build/`](build/) | `build-iso.sh` rebuilds the headless rescue ISO from a pinned upstream grml image; `verify-iso.sh` checks its structure |
 
 Read `boot.md` before anything else. It explains why an ordinary "boot from USB and run the
