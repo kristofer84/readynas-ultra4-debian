@@ -5,6 +5,11 @@ On **2026-09-08** this ReadyNAS Ultra 4 went from ReadyNASOS 6.10.10 to Debian 1
 order it was actually run. Addresses, hostnames and mount paths are placeholders - use
 your own.
 
+[../CHECKLIST.md](../CHECKLIST.md) is the same procedure as commands: four scripts under
+`../install/` do the transcription, this page is the record of what was done by hand and why.
+The scripts have not been run on a ReadyNAS; treat the data proof as the gate, not their
+output.
+
 Read [boot.md](boot.md) first. It explains the one thing that makes this machine different
 from any other PC: **there is no bootloader on the disks**, the BIOS prefers a hidden
 internal USB module, and the only way to boot anything else is the front-panel Backup

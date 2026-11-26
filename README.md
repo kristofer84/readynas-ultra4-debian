@@ -16,6 +16,9 @@ the migration was safe to attempt.
 
 ## Read in this order
 
+[**CHECKLIST.md**](CHECKLIST.md) is the operational version: seven steps, one command each,
+and the gate that says whether to continue. The files below are the evidence and the why.
+
 | file | what it answers |
 |---|---|
 | [docs/boot.md](docs/boot.md) | how the machine starts: no bootloader on the disks, a hidden 120 MB USB module, and the front Backup button as the BIOS boot override |
@@ -26,6 +29,7 @@ the migration was safe to attempt.
 | [`scripts/`](scripts/) | the four `/usr/local/sbin` scripts: `sync-boot-to-dom`, `backup-root`, `nas-fancontrol`, `md-event` |
 | [`systemd/`](systemd/) | the local units, including the weekly root snapshot and the md stripe cache bump |
 | [`hooks/`](hooks/) | the kernel and initramfs hooks that keep the boot module in step with `/boot` |
+| [`install/`](install/) | the four scripts the checklist calls: `preflight.sh`, `chroot-configure.sh`, `boot-module.sh`, `postinstall.sh` |
 | [`build/`](build/) | `build-iso.sh` rebuilds the headless rescue ISO from a pinned upstream grml image; `verify-iso.sh` checks its structure |
 
 Read `boot.md` before anything else. It explains why an ordinary "boot from USB and run the

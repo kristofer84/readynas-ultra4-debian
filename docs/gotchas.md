@@ -35,7 +35,9 @@ A `Name=en*` match covers the second NIC, which has no cable, and wait-online re
 Symptom: services stuck in `start waiting`, and `systemctl list-jobs` showing
 `systemd-networkd-wait-online.service … running`.
 
-Fix, a drop-in passing `--any --timeout=30` ([`../config/`](../config/)):
+Fix, a drop-in passing `--any --timeout=30` ([`../config/`](../config/)). That one file is
+enough; a per-link `RequiredForOnline=no` on the uncabled port does the same thing, and the
+recorded run had both, which is one more file to forget than necessary:
 
 ```
 [Service]
@@ -94,10 +96,13 @@ this array without opening the case, so treat it as fixed.
 
 ## btrfs `space_cache=v1` is what the array mounts with first
 
-The kernel warns it is deprecated. Convert to v2 and pin it in `/etc/fstab`. It is not a live
-change: the kernel would not build the free-space tree on a plain `remount`, and the array
-had to go read-only and back to read-write, which means stopping everything holding `/raid`
-open. Plan it for a quiet moment, not mid-sync.
+The recorded run mounted the array with the deprecated v1 and fixed it the same evening. Do
+not repeat that: put `space_cache=v2` in `/etc/fstab` before the first boot, which is what
+`install/chroot-configure.sh` does.
+
+It is not a live change if you miss it. The kernel would not build the free-space tree on a
+plain `remount`, and the array had to go read-only and back to read-write, which means
+stopping everything holding `/raid` open.
 
 ## The old ReadyNAS leftovers on the data array
 
