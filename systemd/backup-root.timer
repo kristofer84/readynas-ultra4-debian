@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly snapshot of the Debian root filesystem
+
+[Timer]
+OnCalendar=Sun 03:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,91 @@
+# Debian 13 on a ReadyNAS Ultra 4
+
+Installing Debian 13 (trixie) on a NETGEAR ReadyNAS Ultra 4 (RNDU4000) with the 7.3 TiB
+data array left untouched. Recorded on 2026-09-08, from one machine, in the order it was
+actually run.
+
+The whole approach depends on one property of this hardware: the OS lives on its own 4 GB
+`md0` raid1 across the same four disks, separate from the data array (`md127`, raid6,
+btrfs, created 2019-07-31). Only `md0` is reformatted. The data array keeps its ReadyNASOS
+mountpoint `/raid`, mounts read-write on a current kernel without conversion, and no client
+had to change an fstab entry.
+
+Nothing NETGEAR did to the storage is proprietary: md metadata 1.2, plain raid6, btrfs with
+2013-era flags and no quotas. That was verified before any destructive step, which is why
+the migration was safe to attempt.
+
+## Read in this order
+
+| file | what it answers |
+|---|---|
+| [docs/boot.md](docs/boot.md) | how the machine starts: no bootloader on the disks, a hidden 120 MB USB module, and the front Backup button as the BIOS boot override |
+| [docs/rescue-stick.md](docs/rescue-stick.md) | building the headless grml stick that makes the rest possible |
+| [docs/install.md](docs/install.md) | the procedure: prove the data, rebuild `md0`, `debootstrap`, configure, rewrite the boot module, first boot |
+| [docs/gotchas.md](docs/gotchas.md) | what broke after the first boot, with symptoms |
+| [`config/`](config/) | the files that ended up on the box, minus secrets |
+| [`scripts/`](scripts/) | the four `/usr/local/sbin` scripts: `sync-boot-to-dom`, `backup-root`, `nas-fancontrol`, `md-event` |
+| [`systemd/`](systemd/) | the local units, including the weekly root snapshot and the md stripe cache bump |
+| [`hooks/`](hooks/) | the kernel and initramfs hooks that keep the boot module in step with `/boot` |
+
+Read `boot.md` before anything else. It explains why an ordinary "boot from USB and run the
+installer" plan does not work here, and what the machine does instead.
+
+## What you need
+
+- The NAS, with a data array you have already proven readable and a backup of anything on it
+  you cannot lose. The procedure reformats `md0` only, but it does rewrite the boot module.
+- A 2 GB or larger USB stick for the rescue medium, and about 3 GB of scratch space on
+  another Linux host to build it.
+- A second machine on the same LAN. Nothing here is reachable from a console, so the install
+  is driven over SSH.
+- `xorriso` and `debootstrap` on hosts that can reach a Debian mirror.
+- Working hands on the front panel for the first boot. The first attempt on the recorded run
+  needed an in-place fix 107 seconds in.
+
+## Shape of the procedure
+
+1. Boot a remastered grml from the Backup button, and prove the array reads (read-only,
+   sha256 of a file written under ReadyNASOS).
+2. `mkfs.ext4` on `md0` only, then `debootstrap trixie` onto it.
+3. Configure the chroot: packages, `fstab` by UUID, networkd, `MODULES=dep` initramfs, the
+   initramfs carrying mdadm and `mdadm.conf`.
+4. Copy the kernel and initrd to the boot module and point the existing 2013 syslinux at
+   them, leaving `LDLINUX.SYS` alone.
+5. Boot it, with the Backup button within reach.
+6. Install `sync-boot-to-dom` and both hooks, because from then on a kernel upgrade changes
+   what boots.
+
+A 120 MB module holding two kernels is the constraint that shapes steps 3, 4 and 6.
+
+## What was verified on the recorded run
+
+| check | result |
+|---|---|
+| boots unattended, no Backup button | yes, second boot 2026-09-08 13:40:44 |
+| boot time | ~43 s (11.6 s kernel, 31.3 s userspace) |
+| `md0` / `md1` / `md127` | `[4/4] [UUUU]` |
+| data read under Debian | 120 MB file, sha256 matches the ReadyNASOS-era value |
+| data read through the new NFS server | same sha256, read from the client host |
+| data written | 64 MB over NFS, re-read on the NAS, sha256 matched |
+| btrfs health | `btrfs device stats` zero on every counter |
+| SMART | all four disks PASSED |
+
+`install.md` closes with a section on what is verbatim from the machine's own logs and what
+is reconstructed. The grml shell transcript did not survive: no `script -k`, no history.
+Phases 3 to 6 there are consistent with the evidence but are not a transcript, and the page
+says which parts are which.
+
+## Not covered here
+
+- Disk health and array integrity over time. That belongs to the hardware report for this
+  particular set of four drives and is not part of a conversion.
+- Cloud sync and the services built on top of the array. The units for those are in
+  [`systemd/`](systemd/) only where they interact with the conversion (the root snapshot,
+  the md stripe cache).
+- Anything ReadyNASOS-specific beyond getting rid of it. Its users, groups, iSCSI target and
+  AFP/FTP shares were not migrated, and `docs/gotchas.md` says what that leaves behind.
+
+## Licence
+
+GPL-2.0. The scripts and units are meant to be copied, and contributions for other ReadyNAS
+models are welcome if they come with the same kind of evidence.

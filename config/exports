@@ -1,0 +1,21 @@
+# Rebuilt from the ReadyNASOS exports. ReadyNAS used an NFSv4 pseudo-root under
+# /run/nfs4 with fsid=0; a stock nfs-kernel-server does not need it, and clients
+# mounting the real paths work over both v3 and v4 without it.
+#
+# Addresses are examples. `crossmnt` is not optional here: the shares are btrfs
+# subvolumes, so without it a client mounting /raid/other sees an empty directory.
+#
+# Check what a ported file grants, not only the lines you need: the ReadyNASOS
+# one carried /raid/home *(rw), an empty admin home exported to the whole LAN.
+
+/raid/other  192.168.1.20(rw,sync,insecure,no_subtree_check,no_root_squash,crossmnt) \
+             192.168.1.21(rw,sync,insecure,no_subtree_check,no_root_squash,crossmnt) \
+             192.168.1.22(rw,sync,insecure,no_subtree_check,no_root_squash,crossmnt) \
+             127.0.0.1(ro,sync,insecure,no_subtree_check,no_root_squash,crossmnt)
+
+# Cloud data. The sync client runs on the NAS and is the sole writer; the client
+# host only reads it, so this export is read-only. That keeps a container bug or
+# a stray rm elsewhere from propagating a deletion up to the cloud account.
+# all_squash because parts of the tree are mode 0700: the export stays ro, so
+# root gains read, not write.
+/raid/cloud  192.168.1.20(ro,sync,insecure,no_subtree_check,all_squash,anonuid=1000,anongid=1000,crossmnt)

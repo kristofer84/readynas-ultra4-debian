@@ -1,0 +1,65 @@
+#!/bin/bash
+# Copy the current kernel and initrd onto the internal boot module, keeping the
+# previous pair as a fallback.
+#
+# This machine boots syslinux from a hidden 120 MB internal USB module, NOT from
+# /boot on md0. Nothing in Debian knows that, so a kernel upgrade would otherwise
+# leave the module booting an old kernel whose modules have since been removed
+# from /lib/modules -- an unbootable system on the next reboot.
+#
+# It also keeps VMLINUZ.OLD / INITRD.OLD. If a new kernel fails to boot there is
+# no console here to pick a different syslinux entry, so recovery is: hold the
+# Backup button, boot the grml stick, mount the module, and copy the .OLD pair
+# back over the current one. That turns "rebuild the system" into "copy two files".
+#
+# Called from /etc/kernel/postinst.d/ and /etc/initramfs/post-update.d/.
+set -e
+
+MNT=/run/dom-sync
+
+DOM=""
+for d in $(blkid -t TYPE=vfat -o device 2>/dev/null); do
+    sz=$(blockdev --getsize64 "$d" 2>/dev/null || echo 0)
+    if [ "$sz" -gt 100000000 ] && [ "$sz" -lt 200000000 ]; then DOM="$d"; break; fi
+done
+if [ -z "$DOM" ]; then
+    echo "sync-boot-to-dom: internal boot module not found - NOT updating boot files" >&2
+    exit 0
+fi
+
+KVER=$(ls -1 /boot/vmlinuz-* 2>/dev/null | sed 's|.*/vmlinuz-||' | sort -V | tail -1)
+[ -n "$KVER" ] || { echo "sync-boot-to-dom: no kernel in /boot" >&2; exit 0; }
+
+mkdir -p "$MNT"
+mountpoint -q "$MNT" || mount "$DOM" "$MNT"
+
+# Need room for the new pair plus the fallback pair.
+need=$(( ( $(stat -c %s "/boot/vmlinuz-$KVER") + $(stat -c %s "/boot/initrd.img-$KVER") ) * 2 ))
+avail=$(( $(df --output=avail -B1 "$MNT" | tail -1) \
+        + $(stat -c %s "$MNT/VMLINUZ" 2>/dev/null || echo 0) \
+        + $(stat -c %s "$MNT/INITRD.IMG" 2>/dev/null || echo 0) ))
+if [ "$avail" -lt "$need" ]; then
+    echo "sync-boot-to-dom: $avail bytes usable, need $need for two kernels - NOT updating" >&2
+    umount "$MNT"; exit 0
+fi
+
+# Is this actually a different kernel? If not, leave the fallback alone -- an
+# initramfs regeneration should not consume the one known-good pair we have.
+same=no
+if [ -f "$MNT/VMLINUZ" ] && cmp -s "/boot/vmlinuz-$KVER" "$MNT/VMLINUZ"; then same=yes; fi
+
+if [ "$same" = no ] && [ -f "$MNT/VMLINUZ" ]; then
+    cp -f "$MNT/VMLINUZ"    "$MNT/VMLINUZ.OLD"
+    cp -f "$MNT/INITRD.IMG" "$MNT/INITRD.OLD"
+    sync
+    echo "sync-boot-to-dom: kept the previous kernel as VMLINUZ.OLD / INITRD.OLD"
+fi
+
+cp -f "/boot/vmlinuz-$KVER"    "$MNT/VMLINUZ.NEW"
+cp -f "/boot/initrd.img-$KVER" "$MNT/INITRD.NEW"
+sync
+mv -f "$MNT/VMLINUZ.NEW" "$MNT/VMLINUZ"
+mv -f "$MNT/INITRD.NEW"  "$MNT/INITRD.IMG"
+sync
+umount "$MNT"
+echo "sync-boot-to-dom: boot module updated to kernel $KVER"

@@ -1,0 +1,9 @@
+# Root is md0 (raid1 across all four disks). The data array keeps its ReadyNASOS
+# mountpoint /raid, so existing NFS export paths and every client fstab continue
+# to work unchanged.
+#
+# The UUIDs below are the reference machine's. Replace them with your own from
+# `blkid`; a wrong root UUID is a kernel panic with no console to read it on.
+UUID=abd6582f-598a-4d16-bb32-e287cb985c5b   /       ext4    errors=remount-ro,noatime   0 1
+UUID=1e174eec-5dbe-4fa6-a45e-5290e1432e48   none    swap    sw                          0 0
+UUID=a6cae93c-4b2a-47e2-89e6-9f143258a4de   /raid   btrfs   defaults,noatime,space_cache=v2  0 0

@@ -1,0 +1,7 @@
+# Wildcard match on purpose: this box is headless, and an interface rename that
+# no file matches strands it with no way in but the Backup button.
+[Match]
+Name=en*
+
+[Network]
+DHCP=yes

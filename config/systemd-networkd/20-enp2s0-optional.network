@@ -1,0 +1,11 @@
+# The second NIC is routinely uncabled. Without RequiredForOnline=no it counts
+# as a link wait-online must wait for - see ../systemd-networkd-wait-online.service.d/
+# Check the real name with `ip link`; this one is the reference machine's.
+[Match]
+Name=enp2s0
+
+[Link]
+RequiredForOnline=no
+
+[Network]
+DHCP=yes

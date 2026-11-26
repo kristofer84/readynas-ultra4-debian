@@ -1,0 +1,26 @@
+#!/bin/bash
+# Snapshot the Debian root (md0) to the data array.
+#
+# md0 is small (1.2 GB used of 3.9) and holds the entire OS. Without this, a
+# broken upgrade means rebuilding with debootstrap; with it, recovery is: hold
+# the Backup button, boot the grml stick, mkfs md0 if needed, and untar.
+#
+# Deliberately on /raid (md127), a different array from the one being backed up.
+set -euo pipefail
+DEST=/raid/other/backup/debian-root
+KEEP=3
+mkdir -p "$DEST"
+STAMP=$(date +%Y%m%d-%H%M%S)
+OUT="$DEST/md0-debian-root-$STAMP.tar.gz"
+
+tar --one-file-system -czf "$OUT.partial" \
+    --exclude=/tmp/* --exclude=/var/tmp/* --exclude=/var/cache/apt/archives/*.deb \
+    -C / . 2>/dev/null || true
+mv -f "$OUT.partial" "$OUT"
+sha256sum "$OUT" | sed "s|$DEST/||" > "$OUT.sha256"
+
+# keep the newest N, delete older
+ls -1t "$DEST"/md0-debian-root-*.tar.gz 2>/dev/null | tail -n +$((KEEP+1)) | while read -r old; do
+    rm -f "$old" "$old.sha256"
+done
+echo "backup-root: wrote $OUT ($(du -h "$OUT" | cut -f1))"

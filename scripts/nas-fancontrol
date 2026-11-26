@@ -1,0 +1,57 @@
+#!/bin/bash
+# Fan control for the ReadyNAS Ultra 4 chassis under Debian.
+#
+# The IT8721 will not accept its automatic mode (pwm1_enable=3) from the it87
+# driver, so it sits in manual mode. Left alone it runs pwm1=255 -> ~3340 rpm,
+# which is far louder than the ~1809 rpm ReadyNASOS produced and unnecessary:
+# the disks idle at 34-36 C.
+#
+# Sensors are located by NAME, not by hwmon number, because loading drivetemp
+# adds four nodes and the numbering is not stable across boots.
+#
+# Control variable is the hottest disk. Fails safe to full speed.
+
+MINTEMP=42      # at or below this -> MINPWM. WD Red is specified to 65C and this chassis
+                # sat at 39-41C under ReadyNASOS at a constant ~1809 rpm, so there is
+                # nothing to gain by spinning up in the high 30s.
+MAXTEMP=55      # full speed here, 10C below the drives specified maximum
+MINPWM=60       # ~1875 rpm, matching what ReadyNASOS actually ran; fan does not stall
+MAXPWM=255
+INTERVAL=15
+
+find_hwmon_by_name() {
+    for d in /sys/class/hwmon/hwmon*; do
+        [ "$(cat "$d/name" 2>/dev/null)" = "$1" ] && { echo "$d"; return 0; }
+    done
+    return 1
+}
+
+hottest_disk() {
+    local max=-1 t
+    for d in /sys/class/hwmon/hwmon*; do
+        [ "$(cat "$d/name" 2>/dev/null)" = drivetemp ] || continue
+        t=$(cat "$d/temp1_input" 2>/dev/null) || continue
+        [ -n "$t" ] && t=$((t / 1000)) && [ "$t" -gt "$max" ] && max=$t
+    done
+    echo "$max"
+}
+
+while true; do
+    IT=$(find_hwmon_by_name it8721)
+    if [ -z "$IT" ] || [ ! -w "$IT/pwm1" ]; then
+        sleep "$INTERVAL"; continue
+    fi
+    echo 1 > "$IT/pwm1_enable" 2>/dev/null
+
+    T=$(hottest_disk)
+    if [ "$T" -lt 0 ]; then
+        echo "$MAXPWM" > "$IT/pwm1"          # no readings -> fail safe
+    elif [ "$T" -le "$MINTEMP" ]; then
+        echo "$MINPWM" > "$IT/pwm1"
+    elif [ "$T" -ge "$MAXTEMP" ]; then
+        echo "$MAXPWM" > "$IT/pwm1"
+    else
+        echo $(( MINPWM + (T - MINTEMP) * (MAXPWM - MINPWM) / (MAXTEMP - MINTEMP) )) > "$IT/pwm1"
+    fi
+    sleep "$INTERVAL"
+done

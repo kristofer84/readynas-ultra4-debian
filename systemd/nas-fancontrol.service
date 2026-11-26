@@ -1,0 +1,12 @@
+[Unit]
+Description=Chassis fan control for the ReadyNAS Ultra 4
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/nas-fancontrol
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

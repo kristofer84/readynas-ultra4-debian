@@ -1,0 +1,16 @@
+[Unit]
+Description=Raise md stripe cache for raid5/6 write throughput
+After=local-fs.target
+ConditionPathExists=/proc/mdstat
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The kernel default of 256 pages throttles raid5/6 writes badly on this
+# array: measured 10 MB/s at 256 vs 28 MB/s at 4096, with the CPU pinned
+# at 83% system time and 0% iowait -- i.e. stalled on stripe cache, not
+# on the disks. 4096 pages x 4 KB x 4 devices = 64 MB of RAM.
+ExecStart=/bin/sh -c "for m in /sys/block/md*/md/stripe_cache_size; do [ -w \\"$m\\" ] && echo 4096 > \\"$m\\" || true; done"
+
+[Install]
+WantedBy=multi-user.target

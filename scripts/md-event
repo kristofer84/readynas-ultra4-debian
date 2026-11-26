@@ -1,0 +1,14 @@
+#!/bin/bash
+# mdadm --monitor event handler.
+#
+# Its existence is also what lets mdmonitor.service start at all: mdadm exits 1
+# with "No mail address or alert command - not monitoring" if neither MAILADDR
+# nor PROGRAM is set, and this host has no MTA installed.
+#
+# Alerting proper belongs to whatever monitors this host - a Home Assistant
+# sensor, a node_exporter textfile, a mail relay. This handler adds an
+# event-driven record in the journal, so the exact moment and device stay
+# recoverable afterwards.
+event="$1"; array="$2"; device="$3"
+logger -t md-event -p daemon.warning \
+  "md event: ${event} on ${array}${device:+ (device ${device})}"
