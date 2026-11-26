@@ -55,7 +55,13 @@ ip -4 -o addr show 2>&1
 ip -4 route 2>&1
 
 # Announce ourselves so you can find the box by ARP even if DHCP naming does
-# not cooperate. Set PEER to something on the LAN that answers a ping.
-( for _ in $(seq 1 120); do ping -c 1 -W 2 "$PEER" >/dev/null 2>&1; sleep 5; done ) &
+# not cooperate. Set PEER to something on the LAN that answers a ping, or leave
+# it empty and find the box from your DHCP server or `arp -a`.
+case "$PEER" in
+    ""|CHANGEME)
+        echo "no PEER set, skipping the ARP beacon" ;;
+    *)
+        ( for _ in $(seq 1 120); do ping -c 1 -W 2 "$PEER" >/dev/null 2>&1; sleep 5; done ) & ;;
+esac
 
 echo "=== $(date -Is) grml.sh done ==="

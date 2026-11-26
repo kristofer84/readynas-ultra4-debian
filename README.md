@@ -26,6 +26,7 @@ the migration was safe to attempt.
 | [`scripts/`](scripts/) | the four `/usr/local/sbin` scripts: `sync-boot-to-dom`, `backup-root`, `nas-fancontrol`, `md-event` |
 | [`systemd/`](systemd/) | the local units, including the weekly root snapshot and the md stripe cache bump |
 | [`hooks/`](hooks/) | the kernel and initramfs hooks that keep the boot module in step with `/boot` |
+| [`build/`](build/) | `build-iso.sh` rebuilds the headless rescue ISO from a pinned upstream grml image; `verify-iso.sh` checks its structure |
 
 Read `boot.md` before anything else. It explains why an ordinary "boot from USB and run the
 installer" plan does not work here, and what the machine does instead.
@@ -38,7 +39,7 @@ installer" plan does not work here, and what the machine does instead.
   another Linux host to build it.
 - A second machine on the same LAN. Nothing here is reachable from a console, so the install
   is driven over SSH.
-- `xorriso` and `debootstrap` on hosts that can reach a Debian mirror.
+- `xorriso`, `curl` and `debootstrap` on hosts that can reach a Debian mirror.
 - Working hands on the front panel for the first boot. The first attempt on the recorded run
   needed an in-place fix 107 seconds in.
 
@@ -84,6 +85,22 @@ says which parts are which.
   the md stripe cache).
 - Anything ReadyNASOS-specific beyond getting rid of it. Its users, groups, iSCSI target and
   AFP/FTP shares were not migrated, and `docs/gotchas.md` says what that leaves behind.
+
+## The rescue image
+
+`build/build-iso.sh` produces the headless grml image described in
+[docs/rescue-stick.md](docs/rescue-stick.md). **The image is not published here** - there is
+no download and no release asset. The build is reproducible instead: pinned upstream hash,
+fixed `SOURCE_DATE_EPOCH`, pinned xorriso, root-normalised ownership. Four builds on
+2026-11-26 produced one sha256. The CI job runs the same scripts and uploads only
+`SHA256SUMS`, `BUILD-INFO.txt` and the verification log, so you can rebuild and compare.
+
+The image ships the password `changeme` for root and the `grml` user, because a published
+build cannot carry a real one. It is on the kernel command line, so it is visible to anyone
+at the console, and it is usable by anyone on the same L2 segment while the stick is booted.
+Set `SSH_PASSWORD` when you build your own. What it is for, and why that tradeoff is
+acceptable for a stick you boot yourself, is in
+[docs/rescue-stick.md](docs/rescue-stick.md#what-the-password-is-for).
 
 ## Licence
 

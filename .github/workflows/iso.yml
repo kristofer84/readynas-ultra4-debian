@@ -1,0 +1,92 @@
+name: rescue-iso
+
+# Builds the headless rescue ISO from the pinned upstream image, runs the
+# structural checks, and publishes the checksum and the verification log.
+#
+# The ISO itself is deliberately not uploaded: no artifact, no release asset.
+# What makes the run checkable is that the build is reproducible. Same upstream
+# image, same SOURCE_DATE_EPOCH, same xorriso, same files: one sha256. Rebuild
+# locally with build/build-iso.sh and compare against SHA256SUMS in the run's
+# artifact.
+#
+# Verified locally on 2026-11-26: four builds (two consecutive, one as root, one
+# into a different workspace) produced one hash, 3b0397e2...b6bb, on aarch64 with
+# xorriso 1.5.6. This job is the x86_64 reference. If its hash differs from a
+# local rebuild, compare BUILD-INFO.txt first.
+#
+# No cache on purpose: 1.15 GB is downloaded and hash-checked on every run, so
+# the input is always the pinned one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      grml_version:
+        description: grml release to remaster
+        required: false
+        default: "2026.09"
+  push:
+    branches: [main]
+    paths:
+      - "build/**"
+      - "rescue/**"
+      - ".github/workflows/iso.yml"
+  pull_request:
+    paths:
+      - "build/**"
+      - "rescue/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container: debian:trixie-slim
+
+    env:
+      GRML_VERSION: ${{ github.event.inputs.grml_version || '2026.09' }}
+      SSH_PASSWORD: changeme
+      XORRISO_PIN: "1.5.6"
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Install the pinned toolchain
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            ca-certificates curl git xorriso python3 coreutils
+
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: ./build/build-iso.sh
+
+      - name: Verify structure
+        run: ./build/verify-iso.sh "dist/readynas-rescue-${GRML_VERSION}-amd64.iso" "$SSH_PASSWORD" | tee verify.log
+
+      - name: Publish checksums and verification log
+        uses: actions/upload-artifact@v4
+        with:
+          name: rescue-iso-checksums
+          path: |
+            dist/SHA256SUMS
+            dist/BUILD-INFO.txt
+            verify.log
+          retention-days: 14
+
+      - name: Summary
+        run: |
+          {
+            echo "### rescue ISO built and verified"
+            echo
+            echo '```'
+            cat dist/BUILD-INFO.txt
+            echo '```'
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+            echo
+            echo "The image is not uploaded. Rebuild it with \`build/build-iso.sh\` and"
+            echo "compare against the checksum above."
+          } >> "$GITHUB_STEP_SUMMARY"

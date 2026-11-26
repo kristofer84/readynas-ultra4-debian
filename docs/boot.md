@@ -184,7 +184,7 @@ the recorded run.
 | image of the internal boot module | 120 MB device | the only way back to the factory bootloader |
 | tar of the ReadyNASOS root (md0) | 366 MB, 16 654 entries | the old config, taken read-only |
 | tar of each share's `._share` settings | 1.7 KiB | the only record of how AFP/FTP shares were set up |
-| the remastered grml ISO | 1.2 GB | rebuildable from `../rescue/`, but not quickly |
+| the remastered grml ISO | 1.2 GB | rebuildable with `../build/build-iso.sh`, but not quickly |
 
 `sha256sum` each one into a `SHA256SUMS` beside it and verify before you rely on it. The
 grml upstream sums are GPG-signed by release key
