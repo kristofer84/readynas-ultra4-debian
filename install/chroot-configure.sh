@@ -3,6 +3,7 @@
 # after /dev, /proc and /sys are bound, before the boot module is touched.
 #
 #   chroot-configure.sh --hostname nas [--timezone Europe/Stockholm]
+#                       [--root-key /path/to/id_ed25519.pub] [--root-password PW]
 #
 # It installs the package set, writes /etc/fstab from blkid so that no UUID is
 # typed by hand, generates mdadm.conf, sets MODULES=dep, writes the networkd
@@ -16,6 +17,8 @@ set -eu
 
 NAS_HOSTNAME=nas
 TIMEZONE=""
+ROOT_KEY=""
+ROOT_PASSWORD=""
 FAIL=0
 
 usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
@@ -28,6 +31,8 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --hostname) NAS_HOSTNAME=${2:?}; shift 2 ;;
         --timezone) TIMEZONE=${2:?}; shift 2 ;;
+        --root-key) ROOT_KEY=${2:?}; shift 2 ;;
+        --root-password) ROOT_PASSWORD=${2:?}; shift 2 ;;
         -h|--help)  usage ;;
         *)          printf 'unknown argument: %s\n' "$1" >&2; usage ;;
     esac
@@ -154,7 +159,33 @@ else
     ok "initrd $(basename "$INITRD") has ahci raid1 raid456 md-mod ext4 sd_mod mdadm"
 fi
 
-# --- 7. enable, one unit at a time -------------------------------------------
+# --- 7. a way in -------------------------------------------------------------
+# debootstrap leaves root with no password, and Debian's sshd refuses password
+# logins for root by default. Without one of these the machine boots, sshes
+# nowhere, and the only remaining door is the Backup button.
+GENERATED=""
+if [ -n "$ROOT_KEY" ]; then
+    [ -f "$ROOT_KEY" ] || die "no such key file: $ROOT_KEY"
+    install -d -m 0700 /root/.ssh
+    cat "$ROOT_KEY" >> /root/.ssh/authorized_keys
+    chmod 0600 /root/.ssh/authorized_keys
+    ok "root key installed from $(basename "$ROOT_KEY")"
+elif [ -n "$ROOT_PASSWORD" ]; then
+    printf 'root:%s\n' "$ROOT_PASSWORD" | chpasswd
+    ok "root password set from --root-password"
+else
+    ROOT_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 20)
+    printf 'root:%s\n' "$ROOT_PASSWORD" | chpasswd
+    GENERATED=yes
+    warn "no --root-key and no --root-password: generated one, printed below"
+fi
+if passwd -S root 2>/dev/null | grep -q '^root P ' || [ -s /root/.ssh/authorized_keys ]; then
+    ok "root can log in"
+else
+    bad "root has neither a password nor an authorised key: nobody can log in"
+fi
+
+# --- 8. enable, one unit at a time -------------------------------------------
 for unit in systemd-networkd systemd-resolved ssh nfs-server smbd; do
     if systemctl enable "$unit" >/dev/null 2>&1; then
         ok "enabled $unit"
@@ -163,7 +194,7 @@ for unit in systemd-networkd systemd-resolved ssh nfs-server smbd; do
     fi
 done
 
-# --- 8. gate -----------------------------------------------------------------
+# --- 9. gate -----------------------------------------------------------------
 while read -r spec _ _ _; do
     case "$spec" in UUID=*) ;; *) continue ;; esac
     uuid=${spec#UUID=}
@@ -172,6 +203,12 @@ done < /etc/fstab
 if [ "$FAIL" -eq 0 ]; then ok "every fstab UUID resolves"; fi
 
 echo
+if [ -n "$GENERATED" ]; then
+    echo "  root password: $ROOT_PASSWORD"
+    echo "  Write it down now. It is in /etc/shadow and nowhere else, and the only"
+    echo "  other way in is the rescue stick."
+    echo
+fi
 if [ "$FAIL" -eq 0 ]; then
     echo "Configured. Next: install/boot-module.sh --root <mountpoint of the new root>, from the rescue system."
 else

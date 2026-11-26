@@ -79,7 +79,21 @@ for unit in nas-fancontrol.service md-stripe-cache.service backup-root.timer mdm
     systemctl enable --now "$unit" >/dev/null 2>&1 || warn "could not start $unit"
 done
 
-# --- 6. gates: is each of them doing something? -----------------------------
+# --- 6. host keys and a way in ----------------------------------------------
+if ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
+    ok "ssh host keys present"
+elif ssh-keygen -A >/dev/null 2>&1; then
+    ok "ssh host keys generated"
+else
+    bad "no ssh host keys: sshd will not start"
+fi
+if [ -s /root/.ssh/authorized_keys ] || passwd -S root 2>/dev/null | grep -q '^root P '; then
+    ok "root can log in (key or password)"
+else
+    bad "root has no key and no password: fix this before you disconnect"
+fi
+
+# --- 7. gates: is each of them doing something? -----------------------------
 for unit in nas-fancontrol.service mdmonitor.service; do
     if systemctl is-active --quiet "$unit"; then ok "$unit active"; else bad "$unit not active"; fi
 done

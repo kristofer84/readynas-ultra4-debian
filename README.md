@@ -14,10 +14,17 @@ Nothing NETGEAR did to the storage is proprietary: md metadata 1.2, plain raid6,
 2013-era flags and no quotas. That was verified before any destructive step, which is why
 the migration was safe to attempt.
 
+The procedure was run on a unit on **ReadyNASOS 6.10.x**, whose data array is btrfs on `md127`;
+that layout is what was proven portable. A unit still on RAIDiator 4.2.x is an ext4/LVM
+generation and has not been tried. `docs/boot.md` and the boot module work are the same either
+way.
+
 ## Read in this order
 
-[**CHECKLIST.md**](CHECKLIST.md) is the operational version: seven steps, one command each,
-and the gate that says whether to continue. The files below are the evidence and the why.
+[**START-HERE.md**](START-HERE.md) is the guide for a first conversion by someone who can
+copy a command but does not know what `md0` is: one path, no choices, every erasing step done by
+a script that refuses rather than by you. [CHECKLIST.md](CHECKLIST.md) is the same thing for
+someone who knows the words. The files below are the evidence and the why.
 
 | file | what it answers |
 |---|---|

@@ -8,6 +8,8 @@
 #
 #   preflight.sh --data /dev/md127 --hash-file /mnt/preflight-raid/other/big.bin
 #   preflight.sh --data /dev/md127 --hash-file ... --skip-root-tar --out /root/pf
+#   preflight.sh --data /dev/md127 --hash-file auto   # pick a large file yourself
+#   preflight.sh --data /dev/md127 --no-data         # array is meant to be empty
 #
 # Exit 0 means go: from here the only thing that may be reformatted is md0.
 # Nothing in this script writes to the NAS. It reads, and it writes to --out.
@@ -20,6 +22,7 @@ DATA=""
 HASH_FILE=""
 OUT="/root/preflight"
 SKIP_ROOT_TAR=no
+NODATA=no
 RAID_MNT=/mnt/preflight-raid
 ROOT_MNT=/mnt/preflight-root
 FAIL=0
@@ -36,12 +39,13 @@ while [ $# -gt 0 ]; do
         --hash-file)     HASH_FILE=${2:?}; shift 2 ;;
         --out)           OUT=${2:?}; shift 2 ;;
         --skip-root-tar) SKIP_ROOT_TAR=yes; shift ;;
+        --no-data)       NODATA=yes; shift ;;
         -h|--help)       usage ;;
         *)               printf 'unknown argument: %s\n' "$1" >&2; usage ;;
     esac
 done
 [ -n "$DATA" ] || usage
-[ -n "$HASH_FILE" ] || usage
+[ -n "$HASH_FILE" ] || [ "$NODATA" = yes ] || usage
 command -v btrfs >/dev/null || die "btrfs-progs is not installed in this live system"
 
 mkdir -p "$OUT"
@@ -63,6 +67,7 @@ echo "$DETAIL" | grep -qE 'Raid Level : raid[0-9]+' || bad "cannot read the raid
 LEVEL=$(echo "$DETAIL" | awk -F': ' '/Raid Level/ {print $2}')
 DEVICES=$(echo "$DETAIL" | awk -F': ' '/Raid Devices/ {print $2}')
 ok "metadata 1.2, $LEVEL, $DEVICES devices"
+printf '%s %s %s\n' "$DATA" "$LEVEL" "$DEVICES devices" > "$OUT/data-device.txt"
 
 # --- 3. the filesystem is one a current kernel mounts ------------------------
 FSTYPE=$(blkid -s TYPE -o value "$DATA" 2>/dev/null || true)
@@ -73,26 +78,54 @@ case "$FSTYPE" in
 esac
 
 # --- 4. it mounts read-only, the counters are zero, and a file reads back ----
-mkdir -p "$RAID_MNT"
-mountpoint -q "$RAID_MNT" || mount -o ro "$DATA" "$RAID_MNT"
-
-if [ "$FSTYPE" = btrfs ]; then
-    STATS=$(btrfs device stats "$RAID_MNT")
-    if echo "$STATS" | awk '{print $NF}' | grep -qv '^0$'; then
-        echo "$STATS"
-        bad "btrfs device stats are not all zero"
+MOUNTED=no
+if [ -z "$FSTYPE" ]; then
+    if [ "$NODATA" = yes ]; then
+        warn "no filesystem signature on $DATA and --no-data given: nothing to mount, nothing to prove"
     else
-        ok "btrfs device stats: every counter zero"
+        die "no filesystem signature on $DATA. If the array is meant to be empty, re-run with --no-data"
     fi
-    SUBVOLS=$(btrfs subvolume list "$RAID_MNT" | wc -l)
-    ok "btrfs subvolumes: $SUBVOLS"
-fi
+else
+    mkdir -p "$RAID_MNT"
+    mountpoint -q "$RAID_MNT" || mount -o ro "$DATA" "$RAID_MNT"
+    MOUNTED=yes
 
-[ -f "$HASH_FILE" ] || die "$HASH_FILE is not a regular file inside the mount"
-SIZE=$(stat -c %s "$HASH_FILE")
-SUM=$(sha256sum "$HASH_FILE" | cut -d' ' -f1)
-ok "sha256 of $(printf '%s' "$HASH_FILE" | sed "s|^$RAID_MNT||") ($SIZE bytes): $SUM"
-printf '%s  %s\n' "$SUM" "$HASH_FILE" > "$OUT/data-proof.sha256"
+    if [ "$FSTYPE" = btrfs ]; then
+        STATS=$(btrfs device stats "$RAID_MNT")
+        if echo "$STATS" | awk '{print $NF}' | grep -qv '^0$'; then
+            echo "$STATS"
+            bad "btrfs device stats are not all zero"
+        else
+            ok "btrfs device stats: every counter zero"
+        fi
+        SUBVOLS=$(btrfs subvolume list "$RAID_MNT" | wc -l)
+        ok "btrfs subvolumes: $SUBVOLS"
+    fi
+
+    if [ "$HASH_FILE" = auto ]; then
+        # Largest regular file over 100 MB, so nobody has to browse the array to
+        # find something worth hashing.
+        HASH_FILE=$(find "$RAID_MNT" -xdev -type f -size +100M -printf '%s %p\n' 2>/dev/null \
+                    | sort -n | tail -1 | cut -d' ' -f2-)
+        if [ -n "$HASH_FILE" ]; then
+            ok "largest file over 100 MB: $(printf '%s' "$HASH_FILE" | sed "s|^$RAID_MNT||")"
+        else
+            die "no file over 100 MB on $DATA. If the array is empty, re-run with --no-data"
+        fi
+    fi
+
+    if [ -n "$HASH_FILE" ]; then
+        [ -f "$HASH_FILE" ] || die "$HASH_FILE is not a regular file inside the mount"
+        SIZE=$(stat -c %s "$HASH_FILE")
+        SUM=$(sha256sum "$HASH_FILE" | cut -d' ' -f1)
+        ok "sha256 of $(printf '%s' "$HASH_FILE" | sed "s|^$RAID_MNT||") ($SIZE bytes): $SUM"
+        printf '%s  %s\n' "$SUM" "$HASH_FILE" > "$OUT/data-proof.sha256"
+    elif [ "$NODATA" = yes ]; then
+        warn "no --hash-file: no read proof taken, because there is said to be nothing on it"
+    else
+        die "--hash-file is required. If the array is meant to be empty, re-run with --no-data"
+    fi
+fi
 
 # --- 5. the boot module ------------------------------------------------------
 # Under the rescue system it is a plain block device: a single FAT16 partition
@@ -136,14 +169,16 @@ else
         tar -C "$ROOT_MNT" --one-file-system -czf "$OUT/readynasos-root.tar.gz" . 2>/dev/null || bad "tar failed"
         umount "$ROOT_MNT"
         ( cd "$OUT" && sha256sum readynasos-root.tar.gz >> SHA256SUMS )
-        ok "ReadyNASOS root archived from $ROOTDEV: $(du -h "$OUT/readynasos-root.tar.gz" | cut -f1)"
+        printf '%s %s\n' "$ROOTDEV" "$(blockdev --getsize64 "$ROOTDEV") bytes" > "$OUT/root-device.txt"
+        ok "ReadyNASOS root archived from $ROOTDEV ($(blockdev --getsize64 "$ROOTDEV") bytes)"
+        ok "that is the array to mkfs in the next step; it is recorded in root-device.txt"
     else
         bad "no small ext4 array found for the ReadyNASOS root"
     fi
 fi
 
 # --- 7. the per-share settings ----------------------------------------------
-if [ -d "$RAID_MNT/._share" ]; then
+if [ "$MOUNTED" = yes ] && [ -d "$RAID_MNT/._share" ]; then
     tar -C "$RAID_MNT" -czf "$OUT/readynas-share-configs.tar.gz" ._share 2>/dev/null
     ( cd "$OUT" && sha256sum readynas-share-configs.tar.gz >> SHA256SUMS )
     ok "share settings: $(tar -tzf "$OUT/readynas-share-configs.tar.gz" | wc -l) files"
@@ -152,7 +187,7 @@ else
 fi
 
 # --- 8. done ----------------------------------------------------------------
-umount "$RAID_MNT"
+[ "$MOUNTED" = yes ] && umount "$RAID_MNT"
 sort -u -k2 "$OUT/SHA256SUMS" -o "$OUT/SHA256SUMS" 2>/dev/null || true
 echo
 echo "artefacts in $OUT:"

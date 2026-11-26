@@ -1,7 +1,8 @@
 # Checklist
 
 The operational version of this repository: seven steps and the gate that says whether to
-continue. [docs/install.md](docs/install.md) is the same procedure with the
+continue. [START-HERE.md](START-HERE.md) is the same procedure in plain language, for someone who
+does not read `md0` as "the small area where the system lives". [docs/install.md](docs/install.md) is the same procedure with the
 evidence and the timeline; read [docs/boot.md](docs/boot.md) once before you start, because
 everything here depends on the machine having no bootloader on its disks and no console.
 
@@ -9,6 +10,17 @@ The four `install/*.sh` scripts have **not been run on a ReadyNAS**. They are th
 recorded in `docs/install.md` with the hand transcription removed, which is where the mistakes
 were going to come from. Treat the go/no-go they print as advisory and the data proof in step
 3 as the actual gate.
+
+## Precondition
+
+This is a conversion from **ReadyNASOS 6.x** with the layout that generation used: `md0` as a
+4 GB ext4 raid1 OS array, `md1` as swap, `md127` as the data array. That is the layout the
+procedure was run on, and the portability of the data array was proven on its btrfs.
+
+A unit still on **RAIDiator 4.2.x** is a different thing: an ext4/LVM generation. The steps
+below have not been run on one, and the `mkfs` step assumes `md0` is small. Run
+`install/preflight.sh` and read what it reports before deciding anything; it refuses to call a
+degraded or unrecognised array a go.
 
 ## What you need
 
@@ -57,6 +69,10 @@ scp -r root@<address>:/root/preflight ./            # off the machine, now
 cd preflight && sha256sum -c SHA256SUMS
 ```
 
+It also records `root-device.txt` (the small ext4 array it archived, which is the one to
+reformat) and `data-device.txt`, so the next two steps use measured values instead of `/dev/md0`
+from memory.
+
 **Gate: it says GO, and the three artefacts are on the other host with a verified
 `SHA256SUMS`.** If the machine held data before this procedure, the hash it printed must match
 the one you took earlier; on a unit with nothing to compare against, the point of the hash is
@@ -66,8 +82,13 @@ The module image is never optional.
 ## 4. Rebuild the OS array only, and debootstrap
 
 ```sh
-mkfs.ext4 -L debian-root /dev/md0
-mount /dev/md0 /mnt/target
+OSDEV=$(cut -d' ' -f1 root-device.txt)     # from preflight.sh, e.g. /dev/md0
+mdadm --detail "$OSDEV" | grep -E 'Raid Level|Raid Devices|Array Size|Creation Time'
+# expect a 4 GB raid1, created in 2019 or whenever ReadyNASOS built it. If that says
+# raid6 and terabytes, that is the data array: stop.
+
+mkfs.ext4 -L debian-root "$OSDEV"
+mount "$OSDEV" /mnt/target
 debootstrap trixie /mnt/target http://deb.debian.org/debian
 mount --bind /dev /mnt/target/dev
 mount --bind /proc /mnt/target/proc
@@ -84,14 +105,20 @@ still shows the original creation date. `md1` and `md127` are untouched.
 git clone https://github.com/kristofer84/readynas-ultra4-debian \
     /mnt/target/root/readynas-ultra4-debian
 chroot /mnt/target /root/readynas-ultra4-debian/install/chroot-configure.sh \
-    --hostname nas --timezone Europe/Stockholm
+    --hostname nas --timezone Europe/Stockholm \
+    --root-key /root/id_ed25519.pub        # or --root-password, or neither
 ```
+
+`debootstrap` leaves root with no password, and Debian's sshd refuses password logins for root
+by default: without a key or a password here the machine boots and nobody can get in. Given
+neither, the script generates a 20 character password and prints it once. Write it down before
+you close the terminal.
 
 Packages, `fstab` from `blkid` (with `space_cache=v2` up front), `mdadm.conf`, networkd and
 the wait-online drop-in, `MODULES=dep`, initramfs, and the units enabled one at a time.
 
-**Gate:** it prints `initrd … has ahci raid1 raid456 md-mod ext4 sd_mod mdadm` and `every
-fstab UUID resolves`.
+**Gate:** it prints `initrd … has ahci raid1 raid456 md-mod ext4 sd_mod mdadm`, `every fstab
+UUID resolves`, and `root can log in`.
 
 ## 6. Point the boot module at the new kernel
 
@@ -136,6 +163,7 @@ It does **not** touch `/etc/exports` or `/etc/samba/smb.conf`; read
 | SMART, all disks | PASSED |
 | fan under load | ~1900 rpm at 40 °C, not 3340 |
 | `systemctl --failed` | nothing |
+| logging in as root after a cold boot | works, by key or by the password you wrote down |
 
 ## When it goes wrong
 
