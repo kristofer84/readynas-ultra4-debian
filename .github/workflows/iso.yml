@@ -70,6 +70,12 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # The job runs in a container as root while the workspace belongs to the
+      # runner's uid; git refuses to work in a repository it thinks it does not
+      # own, and gh shells out to git.
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       # A tag names the release; the release name decides what is built, so
       # `rescue-2026.09` builds grml 2026.09 and cannot be mislabelled.
       - name: Resolve the grml version
@@ -144,7 +150,7 @@ jobs:
         run: |
           if [ -n "$DISPATCH_TAG" ]; then tag=$DISPATCH_TAG; else tag=${GITHUB_REF#refs/tags/}; fi
           echo "publishing $tag"
-          gh release create "$tag" \
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
             "dist/$IMAGE" dist/SHA256SUMS dist/BUILD-INFO.txt verify.log \
             --title "Rescue ISO, grml ${GRML_VERSION}" \
             --notes-file dist/RELEASE-NOTES.md
