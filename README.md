@@ -91,8 +91,8 @@ says which parts are which.
 `build/build-iso.sh` produces the headless grml image described in
 [docs/rescue-stick.md](docs/rescue-stick.md). **The image is not published here** - there is
 no download and no release asset. The build is reproducible instead: pinned upstream hash,
-fixed `SOURCE_DATE_EPOCH`, pinned xorriso, root-normalised ownership. Four builds on
-2026-11-26 produced one sha256. The CI job runs the same scripts and uploads only
+fixed `SOURCE_DATE_EPOCH`, pinned xorriso, root-normalised ownership. Five builds on
+2026-11-26, aarch64 and x86_64, as root and as a normal user, produced one sha256. The CI job runs the same scripts and uploads only
 `SHA256SUMS`, `BUILD-INFO.txt` and the verification log, so you can rebuild and compare.
 
 The image ships the password `changeme` for root and the `grml` user, because a published

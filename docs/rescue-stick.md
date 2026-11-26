@@ -117,12 +117,26 @@ conditions:
 `-r` normalises ownership and permissions to root and read-only, so building as root and as
 a normal user gives the same bytes. Building from a different directory does too.
 
-Measured on 2026-11-26: four builds (two consecutive, one as root, one into a different
-workspace) of grml 2026.09 with xorriso 1.5.6 produced
-`3b0397e25c69c093a713224e257ec221a4290f30706f99f8cdced5ae2211b6bb`. Not measured: the same
-build on x86_64, which is what CI runs, or with a different xorriso. If a rebuild differs,
-compare `dist/BUILD-INFO.txt` first: it records the upstream hash, the source date, the
-xorriso version and the build host.
+Measured on 2026-11-26, grml 2026.09 with xorriso 1.5.6, one hash every time:
+`3b0397e25c69c093a713224e257ec221a4290f30706f99f8cdced5ae2211b6bb`.
+
+| build | host |
+|---|---|
+| two consecutive runs | aarch64 Debian 13, as user `ha` |
+| one run as root | aarch64 Debian 13 |
+| one run into a different workspace | aarch64 Debian 13 |
+| the CI job | x86_64 `debian:trixie-slim`, as root |
+
+Not measured: any other xorriso version. That is what `XORRISO_PIN` is for, and it is why a
+rebuild that differs should be checked against `dist/BUILD-INFO.txt` first: it records the
+upstream hash, the source date, the xorriso version and the build host.
+
+To check a build of your own against a published one:
+
+```sh
+./build/build-iso.sh
+cd dist && sha256sum -c SHA256SUMS    # against the checksum from the CI run
+```
 
 `.github/workflows/iso.yml` runs the same two scripts on every change to `build/` or
 `rescue/`, and uploads `SHA256SUMS`, `BUILD-INFO.txt` and `verify.log` as the only artifact.

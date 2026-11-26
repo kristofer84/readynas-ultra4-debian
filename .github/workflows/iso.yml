@@ -9,10 +9,10 @@ name: rescue-iso
 # locally with build/build-iso.sh and compare against SHA256SUMS in the run's
 # artifact.
 #
-# Verified locally on 2026-11-26: four builds (two consecutive, one as root, one
-# into a different workspace) produced one hash, 3b0397e2...b6bb, on aarch64 with
-# xorriso 1.5.6. This job is the x86_64 reference. If its hash differs from a
-# local rebuild, compare BUILD-INFO.txt first.
+# Verified on 2026-11-26: four local builds (two consecutive, one as root, one
+# into a different workspace) on aarch64 and this job on x86_64, all with
+# xorriso 1.5.6, produced the same hash: 3b0397e2...b6bb. A rebuild that differs
+# is a different toolchain, not a different build; compare BUILD-INFO.txt.
 #
 # No cache on purpose: 1.15 GB is downloaded and hash-checked on every run, so
 # the input is always the pinned one.
