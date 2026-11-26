@@ -89,11 +89,26 @@ says which parts are which.
 ## The rescue image
 
 `build/build-iso.sh` produces the headless grml image described in
-[docs/rescue-stick.md](docs/rescue-stick.md). **The image is not published here** - there is
-no download and no release asset. The build is reproducible instead: pinned upstream hash,
+[docs/rescue-stick.md](docs/rescue-stick.md). You can build it yourself, or take it from a
+[release](https://github.com/kristofer84/readynas-ultra4-debian/releases): a tag `rescue-*` makes the workflow build the image in GitHub
+Actions and attach it, so the asset is always one GitHub produced, never one uploaded by hand.
+Every other run publishes only `SHA256SUMS`, `BUILD-INFO.txt` and the verification log.
+
+Two checks on a downloaded asset, and they answer different questions:
+
+```sh
+gh attestation verify readynas-rescue-2026.09-amd64.iso --repo kristofer84/readynas-ultra4-debian
+```
+
+says GitHub built these bytes in this workflow, from this commit.
+
+```sh
+./build/build-iso.sh && cd dist && sha256sum -c SHA256SUMS
+```
+
+says the bytes follow from the pinned inputs. The build is reproducible: pinned upstream hash,
 fixed `SOURCE_DATE_EPOCH`, pinned xorriso, root-normalised ownership. Five builds on
-2026-11-26, aarch64 and x86_64, as root and as a normal user, produced one sha256. The CI job runs the same scripts and uploads only
-`SHA256SUMS`, `BUILD-INFO.txt` and the verification log, so you can rebuild and compare.
+2026-11-26, aarch64 and x86_64, as root and as a normal user, produced one sha256.
 
 The image ships the password `changeme` for root and the `grml` user, because a published
 build cannot carry a real one. It is on the kernel command line, so it is visible to anyone

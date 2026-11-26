@@ -104,9 +104,16 @@ filling bytes 446 to 509 cannot disturb it.
 
 ## Verifiable build
 
-The image is not published. What is published is a sha256 that you can check by building it
-yourself, which is only worth anything if the build is reproducible. It is, under three
-conditions:
+Releases carry an image built by the workflow, not by me: a tag `rescue-*` runs
+`build/build-iso.sh` and attaches the result. That answers "who built this", and the attestation
+is what makes the answer checkable:
+
+```sh
+gh attestation verify readynas-rescue-2026.09-amd64.iso --repo kristofer84/readynas-ultra4-debian
+```
+
+It does not answer "what is in it". For that the build has to be reproducible, so that the
+sha256 on the release means something you can derive yourself. It is, under three conditions:
 
 | condition | how it is pinned |
 |---|---|
@@ -135,11 +142,8 @@ To check a build of your own against a published one:
 
 ```sh
 ./build/build-iso.sh
-cd dist && sha256sum -c SHA256SUMS    # against the checksum from the CI run
+cd dist && sha256sum -c SHA256SUMS    # the checksum from the release or the run's artifact
 ```
-
-`.github/workflows/iso.yml` runs the same two scripts on every change to `build/` or
-`rescue/`, and uploads `SHA256SUMS`, `BUILD-INFO.txt` and `verify.log` as the only artifact.
 
 ## What verify-iso.sh checks, and what it cannot
 

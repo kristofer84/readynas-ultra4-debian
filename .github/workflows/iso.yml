@@ -1,18 +1,22 @@
 name: rescue-iso
 
-# Builds the headless rescue ISO from the pinned upstream image, runs the
-# structural checks, and publishes the checksum and the verification log.
+# Builds the headless rescue ISO from the pinned upstream image, verifies its
+# structure, attests its provenance, and publishes it.
 #
-# The ISO itself is deliberately not uploaded: no artifact, no release asset.
-# What makes the run checkable is that the build is reproducible. Same upstream
-# image, same SOURCE_DATE_EPOCH, same xorriso, same files: one sha256. Rebuild
-# locally with build/build-iso.sh and compare against SHA256SUMS in the run's
-# artifact.
+# Where the image goes: a tag `rescue-*` creates a GitHub release with the image
+# as an asset, built here and never uploaded from anywhere else. Every other run
+# (push, pull request, manual dispatch without publishing) uploads only
+# SHA256SUMS, BUILD-INFO.txt and verify.log.
 #
-# Verified on 2026-11-26: four local builds (two consecutive, one as root, one
-# into a different workspace) on aarch64 and this job on x86_64, all with
-# xorriso 1.5.6, produced the same hash: 3b0397e2...b6bb. A rebuild that differs
-# is a different toolchain, not a different build; compare BUILD-INFO.txt.
+# Two independent checks on a downloaded asset:
+#   gh attestation verify readynas-rescue-<ver>-amd64.iso --repo <owner>/<repo>
+#   ./build/build-iso.sh && cd dist && sha256sum -c SHA256SUMS
+# The first says GitHub built these bytes in this workflow. The second says the
+# bytes follow from the pinned inputs, because the build is reproducible: same
+# upstream image, same SOURCE_DATE_EPOCH, same xorriso, same files, one sha256.
+# Verified 2026-11-26 with xorriso 1.5.6: four local aarch64 builds (two
+# consecutive, one as root, one into a different workspace) and this job on
+# x86_64 all produced 3b0397e25c69c093a713224e257ec221a4290f30706f99f8cdced5ae2211b6bb.
 #
 # No cache on purpose: 1.15 GB is downloaded and hash-checked on every run, so
 # the input is always the pinned one.
@@ -24,28 +28,35 @@ on:
         description: grml release to remaster
         required: false
         default: "2026.09"
+      publish_tag:
+        description: create a release with this tag, empty to build only
+        required: false
+        default: ""
   push:
     branches: [main]
     paths:
       - "build/**"
       - "rescue/**"
       - ".github/workflows/iso.yml"
+    tags:
+      - "rescue-*"
   pull_request:
     paths:
       - "build/**"
       - "rescue/**"
 
 permissions:
-  contents: read
+  contents: write
+  attestations: write
+  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     container: debian:trixie-slim
 
     env:
-      GRML_VERSION: ${{ github.event.inputs.grml_version || '2026.09' }}
       SSH_PASSWORD: changeme
       XORRISO_PIN: "1.5.6"
       DEBIAN_FRONTEND: noninteractive
@@ -55,17 +66,90 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends \
-            ca-certificates curl git xorriso python3 coreutils
+            ca-certificates curl git gh xorriso python3 coreutils
 
       - uses: actions/checkout@v4
+
+      # A tag names the release; the release name decides what is built, so
+      # `rescue-2026.09` builds grml 2026.09 and cannot be mislabelled.
+      - name: Resolve the grml version
+        run: |
+          version="${{ github.event.inputs.grml_version }}"
+          ref="${GITHUB_REF#refs/tags/}"
+          if [ -z "$version" ] && [ "$ref" != "$GITHUB_REF" ]; then
+            version="${ref#rescue-}"
+          fi
+          [ -n "$version" ] || version=2026.09
+          echo "GRML_VERSION=$version" >> "$GITHUB_ENV"
+          echo "IMAGE=readynas-rescue-$version-amd64.iso" >> "$GITHUB_ENV"
+          echo "building grml $version as readynas-rescue-$version-amd64.iso"
 
       - name: Build
         run: ./build/build-iso.sh
 
       - name: Verify structure
-        run: ./build/verify-iso.sh "dist/readynas-rescue-${GRML_VERSION}-amd64.iso" "$SSH_PASSWORD" | tee verify.log
+        run: ./build/verify-iso.sh "dist/$IMAGE" "$SSH_PASSWORD" | tee verify.log
 
-      - name: Publish checksums and verification log
+      # Provenance: a signed statement that this workflow, in this repository,
+      # at this commit, produced an artifact with this digest.
+      - name: Attest provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          # env.IMAGE is written to $GITHUB_ENV at run time and is not visible
+          # to the env context here; dist/ holds exactly one ISO.
+          subject-path: dist/*.iso
+
+      - name: Release notes
+        run: |
+          {
+            echo "Headless grml rescue image for the NETGEAR ReadyNAS Ultra 4 (RNDU4000),"
+            echo "built by GitHub Actions from the pinned upstream image in this repository."
+            echo "See \`docs/rescue-stick.md\` for how it is made and how to use it."
+            echo
+            echo "It boots with the front **Backup** button, brings the wired network up by"
+            echo "itself and starts sshd, which is the only way into a machine with no video"
+            echo "output. Written to a USB stick with \`dd\`."
+            echo
+            echo '```'
+            cat dist/BUILD-INFO.txt
+            echo '```'
+            echo
+            echo "**Password: \`changeme\`**, for root and for the grml user. It is on the kernel"
+            echo "command line, so it is visible at the console and usable by anyone on the same"
+            echo "L2 segment while the stick is booted. Build your own with \`SSH_PASSWORD\` set if"
+            echo "that matters where you are."
+            echo
+            echo "**Not signed with a key of mine.** Two checks instead:"
+            echo
+            echo '```'
+            echo "gh attestation verify ${IMAGE} --repo ${GITHUB_REPOSITORY}"
+            echo '```'
+            echo
+            echo "says GitHub built these bytes in this workflow."
+            echo
+            echo '```'
+            echo "build/build-iso.sh && cd dist && sha256sum -c SHA256SUMS"
+            echo '```'
+            echo
+            echo "says the bytes follow from the pinned inputs. The build is reproducible: same"
+            echo "upstream image, same \`SOURCE_DATE_EPOCH\`, same xorriso, same files, one sha256."
+          } > dist/RELEASE-NOTES.md
+          cat dist/RELEASE-NOTES.md
+
+      - name: Publish the image to a release
+        if: startsWith(github.ref, 'refs/tags/rescue-') || github.event.inputs.publish_tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISPATCH_TAG: ${{ github.event.inputs.publish_tag }}
+        run: |
+          if [ -n "$DISPATCH_TAG" ]; then tag=$DISPATCH_TAG; else tag=${GITHUB_REF#refs/tags/}; fi
+          echo "publishing $tag"
+          gh release create "$tag" \
+            "dist/$IMAGE" dist/SHA256SUMS dist/BUILD-INFO.txt verify.log \
+            --title "Rescue ISO, grml ${GRML_VERSION}" \
+            --notes-file dist/RELEASE-NOTES.md
+
+      - name: Checksums and verification log
         uses: actions/upload-artifact@v4
         with:
           name: rescue-iso-checksums
@@ -86,7 +170,4 @@ jobs:
             echo '```'
             cat dist/SHA256SUMS
             echo '```'
-            echo
-            echo "The image is not uploaded. Rebuild it with \`build/build-iso.sh\` and"
-            echo "compare against the checksum above."
           } >> "$GITHUB_STEP_SUMMARY"
