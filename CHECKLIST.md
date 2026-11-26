@@ -40,6 +40,8 @@ dumps. Unmount the NFS exports there. Stop the sync clients first.
 
 ## 2. Boot the rescue system
 
+**At the machine.**
+
 Power off. **Hold the front Backup button first**, then press Power, and keep holding through
 POST, up to 15 s.
 
@@ -50,6 +52,8 @@ ssh root@<address>          # password: changeme, unless you built with SSH_PASS
 **Gate:** you get a shell. If not, fix the stick, do not improvise on the storage.
 
 ## 3. Prove the data and take the artefacts
+
+**From the rescue shell** (`ssh root@<address>`), and stay there for steps 3 to 6.
 
 ```sh
 # pick a file to hash, read-only, so nothing is written before the proof
@@ -81,6 +85,9 @@ The module image is never optional.
 
 ## 4. Rebuild the OS array only, and debootstrap
 
+**From the rescue shell**, or let `install/format-and-debootstrap.sh` do this block, which is what
+[START-HERE.md](START-HERE.md) does.
+
 ```sh
 OSDEV=$(cut -d' ' -f1 root-device.txt)     # from preflight.sh, e.g. /dev/md0
 mdadm --detail "$OSDEV" | grep -E 'Raid Level|Raid Devices|Array Size|Creation Time'
@@ -100,6 +107,8 @@ cp /etc/resolv.conf /mnt/target/etc/resolv.conf
 still shows the original creation date. `md1` and `md127` are untouched.
 
 ## 5. Configure the new root
+
+**From the rescue shell**, via `chroot`.
 
 ```sh
 git clone https://github.com/kristofer84/readynas-ultra4-debian \
@@ -122,6 +131,8 @@ UUID resolves`, and `root can log in`.
 
 ## 6. Point the boot module at the new kernel
 
+**From the rescue shell.**
+
 ```sh
 ./install/boot-module.sh --root /mnt/target
 ```
@@ -134,6 +145,8 @@ and the new root UUID, and lists anything else on the module that might still be
 **Gate:** it prints the module contents, and no ReadyNASOS kernel/initrd pair is among them.
 
 ## 7. First boot, then the rest
+
+**At the machine** for the power cycle, then **from the new system** over SSH.
 
 `umount /mnt/target`, power off, and boot **with the Backup button within reach**: the first
 boot stalls on `systemd-networkd-wait-online`, and sshd comes up anyway, which is the only

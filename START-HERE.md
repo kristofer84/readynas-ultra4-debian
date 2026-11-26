@@ -8,6 +8,17 @@ Written for someone who can open a terminal and copy a command, not for a Linux 
 something does not look like the "you should see" line, stop there and ask for help. Every step
 that could cost you something says so.
 
+## Two places you will type
+
+Every command below says where it goes. There are only two places:
+
+- **On your computer**, in a terminal on your Linux machine.
+- **In the NAS window**, which is the `ssh root@IP` window you open in step 3. That shell is
+  running on the NAS itself, from the rescue stick.
+
+Keep the NAS window open from step 3 to step 6. If it closes, you lose nothing; reconnect with
+`ssh root@IP` (password `changeme`) and `cd readynas-ultra4-debian` to get back to where you were.
+
 **Before you start:** if the files on the NAS matter and exist nowhere else, copy them off first.
 This procedure is built to keep your files, but a copy is the only thing that saves you from a
 wrong command.
@@ -23,7 +34,7 @@ wrong command.
 
 ## 1. Make the rescue stick
 
-On your Linux computer, in a terminal:
+**On your computer.**
 
 ```sh
 sudo apt install gh
@@ -34,7 +45,7 @@ sha256sum -c SHA256SUMS
 You should see `readynas-rescue-2026.09-amd64.iso: OK`. If it says FAILED, delete the file and
 download it again; do not continue.
 
-Plug in the USB stick and find out what it is called:
+**On your computer.** Plug in the USB stick and find out what it is called:
 
 ```sh
 lsblk
@@ -57,6 +68,8 @@ sync
 
 ## 2. Start the NAS from the stick
 
+**At the machine**, no computer involved.
+
 1. Plug the stick into a **rear** USB port of the NAS.
 2. Shut the NAS down: hold the power button until it goes off.
 3. **Press and hold the front panel button marked Backup.** Keep holding it and press Power.
@@ -68,6 +81,8 @@ the NAS starts normally instead, and nothing is lost; just try again.
 Wait two minutes.
 
 ## 3. Connect to it
+
+**On your computer.** From here to step 6 you will be typing in the NAS window.
 
 ```sh
 ping IP
@@ -82,35 +97,43 @@ nothing on the NAS has been changed yet.
 
 ## 4. Look before you touch anything
 
+**In the NAS window.**
+
 ```sh
 git clone https://github.com/kristofer84/readynas-ultra4-debian
 cd readynas-ultra4-debian
 ./install/preflight.sh --data /dev/md127 --hash-file auto
 ```
 
-It reads your data without changing it, proves a file still matches, and saves copies of the old
-system's settings and start-up area into `/root/preflight`.
-
-You should see `GO` on the last line. If it says `NO GO`, stop and send the whole output to
-whoever is helping you: nothing has been erased and the NAS is still the machine it was.
-
-Copy those safety copies to your computer, then put them somewhere you will find them again:
-
-```sh
-# this runs on your computer, not on the NAS
-scp -r root@IP:/root/preflight .
-```
-
-If the NAS is empty and there is nothing on it to prove, use this instead of the first command:
+If the NAS is empty, with no files on it worth proving, use this instead of that last line:
 
 ```sh
 ./install/preflight.sh --data /dev/md127 --no-data
 ```
 
+Either way it reads your data without changing it, proves a file still matches where there is one,
+and saves copies of the old system's settings and start-up area into `/root/preflight`.
+
+You should see `GO` on the last line. If it says `NO GO`, stop and send the whole output to
+whoever is helping you: nothing has been erased and the NAS is still the machine it was.
+
+Now copy those safety copies to your computer, so they survive even if the NAS does not. This is
+the one block that runs **on your computer**, in a second terminal; the NAS window stays open and
+untouched.
+
+**On your computer:**
+
+```sh
+scp -r root@IP:/root/preflight .
+```
+
+Put that folder somewhere you will find it again, and keep it until the NAS has been running for a
+month.
+
 ## 5. Install Debian
 
-This is the only step that erases anything. It only erases the small part of the disks where the
-NAS's own system lives, not where your files are.
+**In the NAS window.** This is the only step that erases anything, and it erases only the small
+part of the disks where the NAS's own system lives, not where your files are.
 
 ```sh
 ./install/format-and-debootstrap.sh --preflight /root/preflight
@@ -121,23 +144,36 @@ line, then type it. If what it names surprises you, close the window instead; no
 yet.
 
 Then it downloads and installs Debian. On this hardware that takes 15 to 25 minutes. Leave the
-window open. If your connection drops, log in again and watch:
+window open. If your connection drops, log in again with `ssh root@IP` and watch it continue:
 
 ```sh
-tail -f /var/log/bootstrap.log
+tail -f /mnt/target/var/log/bootstrap.log
 ```
 
+That path is the *new* system's log, which is why it starts with `/mnt/target`.
+
 ## 6. Configure it, and point the start-up at it
+
+**In the NAS window.**
+
+That command needs a way for you to log in afterwards. The simplest is to let it make a password:
 
 ```sh
 chroot /mnt/target /root/readynas-ultra4-debian/install/chroot-configure.sh --hostname nas
 ```
 
-At the end it prints either `root can log in` or a password. **If it prints a password, write it
-down now.** It is stored nowhere you can read later, and it is the only way back in.
+At the end it prints `root can log in` and a password. **Write that password down now.** It is
+stored nowhere you can read later, and it is the only way back into the machine.
 
-If you have an SSH key and would rather log in with that, add `--root-key /root/id_ed25519.pub`
-to the command. Either way, one of the two is needed.
+If you already keep an SSH key and would rather use that, put your public key inside the new
+system first, then ask for it by name. Your key has to be inside `/mnt/target/root/` for the
+chroot to see it:
+
+```sh
+cp id_ed25519.pub /mnt/target/root/
+chroot /mnt/target /root/readynas-ultra4-debian/install/chroot-configure.sh \
+    --hostname nas --root-key /root/id_ed25519.pub
+```
 
 Then put the new system's start-up files on the small internal stick:
 
@@ -150,12 +186,16 @@ and send that list to whoever is helping; do not delete anything yourself.
 
 ## 7. Start it for the first time
 
+**In the NAS window:**
+
 ```sh
 poweroff
 ```
 
-Wait for it to go off, then press the power button. **Do not hold Backup this time.** Stay near
-the machine until it answers:
+The window closes, which is normal. Wait for the machine to go off, then press the power button.
+**Do not hold Backup this time.** Stay near the machine.
+
+**On your computer**, until it answers:
 
 ```sh
 ping IP
@@ -165,7 +205,7 @@ ssh root@IP
 The first start is where anything that went unnoticed shows up, which is why you are standing
 there. If it does not come up after three minutes, go to *If something goes wrong* below.
 
-When you are in:
+Then **in that new NAS window**:
 
 ```sh
 cd /root/readynas-ultra4-debian
@@ -176,6 +216,8 @@ It installs the housekeeping that keeps the machine healthy: fan control, a week
 system, and a check that tells you if a disk array is unhappy.
 
 ## 8. Check that it worked
+
+**In the NAS window.**
 
 | do this | you should see |
 |---|---|

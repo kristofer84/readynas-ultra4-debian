@@ -116,12 +116,14 @@ fi
 
 echo
 echo "Done. The next command configures the new system. It needs a way for you to"
-echo "log in, so give it your SSH public key (or let it generate a password):"
-echo
-echo "  chroot $TARGET $REPO_DIR/install/chroot-configure.sh \\"
-echo "      --hostname nas --root-key /root/id_ed25519.pub"
-echo
-echo "or, without a key:"
+echo "log in. Simplest is to let it generate a password:"
 echo
 echo "  chroot $TARGET $REPO_DIR/install/chroot-configure.sh --hostname nas"
+echo
+echo "or, to log in with your own key, copy the public key in first so the chroot"
+echo "can see it:"
+echo
+echo "  cp id_ed25519.pub $TARGET/root/"
+echo "  chroot $TARGET $REPO_DIR/install/chroot-configure.sh \\"
+echo "      --hostname nas --root-key /root/id_ed25519.pub"
 echo
